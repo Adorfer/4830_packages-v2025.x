@@ -29,7 +29,7 @@ DELAYSECS=$(printf %d 0x${LASTOCTET})
 # ... but delay hammering the server pseudo-randomly
 sleep ${DELAYSECS}
 
-branch=$(uci get autoupdater.settings.branch)
+branch=$(uci -q get autoupdater.settings.branch)
 AUBRNCH="${branch}"
 
 # Empty string == unset in UCI
@@ -59,6 +59,10 @@ if [ $(printf "%.0f" "${curlat}") != 0 -o $(printf "%.0f" "${curlon}") != 0 ]; t
   STRTIME="$(awk </tmp/getmesh.out '/^FRM:/ {printf("%s", $2);}')"
   AUBRNCH="$(awk </tmp/getmesh.out '/^AUB:/ {printf("%s", $2);}')"
   if [ "X${AUBRNCH}" = "X" ]; then
+   AUBRNCH="${branch}"
+  fi
+  # An unknown branch would stop the autoupdater; keep the current one.
+  if [ "$(uci -q get autoupdater."${AUBRNCH}")" != "branch" ]; then
    AUBRNCH="${branch}"
   fi
 
