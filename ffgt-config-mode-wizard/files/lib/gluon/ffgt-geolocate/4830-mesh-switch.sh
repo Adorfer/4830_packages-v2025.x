@@ -103,6 +103,27 @@ now="$(date +%s)"
 switchtime="$(/sbin/uci get gluon-node-info.@location[0].switchtime 2>/dev/null)"
 tgtloc="$(/sbin/uci get gluon-node-info.@location[0].tgtloc 2>/dev/null)"
 
+# Values stored by older versions of this script were not checked: a
+# non-numeric switchtime breaks the time test every hour, and for an unknown
+# tgtloc gluon-switch-domain refuses to switch - after locode has already
+# been set to it below. Drop such values once.
+case "${switchtime}" in
+ *[!0-9]*)
+  logger "$0: dropping unusable switchtime '${switchtime}'."
+  /sbin/uci delete gluon-node-info.@location[0].switchtime ||:
+  /sbin/uci commit gluon-node-info
+  switchtime=""
+  ;;
+esac
+if [ "${tgtloc}" != "" ]; then
+ if [ "${tgtloc}" != "${tgtloc%%/*}" ] || [ ! -f "/lib/gluon/domains/${tgtloc}.json" ]; then
+  logger "$0: dropping unknown target mesh '${tgtloc}'."
+  /sbin/uci delete gluon-node-info.@location[0].tgtloc ||:
+  /sbin/uci commit gluon-node-info
+  tgtloc=""
+ fi
+fi
+
 if [ "${switchtime}" != "" ]; then
  if [ "${tgtloc}" != "" ]; then
   if [ ${now} -gt ${switchtime} ]; then
