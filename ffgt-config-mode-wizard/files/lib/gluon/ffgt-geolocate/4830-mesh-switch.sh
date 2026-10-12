@@ -37,11 +37,27 @@ switchtime="$(/sbin/uci get gluon-node-info.@location[0].switchtime 2>/dev/null)
 # Ensure these values are numbers
 curlat="$(/sbin/uci get gluon-node-info.@location[0].latitude 2>/dev/null || echo 0.0)"
 curlon="$(/sbin/uci get gluon-node-info.@location[0].longitude 2>/dev/null || echo 0.0)"
-# Sanitize
-#curlat="$(echo "${curlat}" | sed -e 's/ //g')"
-#curlon="$(echo "${curlon}" | sed -e 's/ //g')"
-curlat="$(printf "%.7f" "${curlat}")"
-curlon="$(printf "%.7f" "${curlon}")"
+# Sanitize: busybox printf rejects anything but a plain number (also
+# surrounding blanks or a decimal comma) with "invalid number" on stderr,
+# which micrond puts into the syslog every hour, and prints 0 instead - so
+# with one bad coordinate the server was asked about lat or lon 0. Strip
+# blanks, accept a decimal comma; if either value is still unusable, treat
+# both as unset (0.0) and do not ask at all.
+coord_ok() {
+ case "$1" in
+  ''|-|.|-.|*[!0-9.-]*|?*-*|*.*.*) return 1 ;;
+ esac
+ return 0
+}
+curlat="$(echo "${curlat}" | sed -e 's/ //g' -e 's/,/./')"
+curlon="$(echo "${curlon}" | sed -e 's/ //g' -e 's/,/./')"
+if coord_ok "${curlat}" && coord_ok "${curlon}"; then
+ curlat="$(printf "%.7f" "${curlat}")"
+ curlon="$(printf "%.7f" "${curlon}")"
+else
+ curlat="0.0000000"
+ curlon="0.0000000"
+fi
 # If at least lat or lon are set and plausible, let's try
 if [ $(printf "%.0f" "${curlat}") != 0 -o $(printf "%.0f" "${curlon}") != 0 ]; then
  mac="$(cat /lib/gluon/core/sysconfig/primary_mac)"
