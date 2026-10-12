@@ -62,29 +62,47 @@ if [ $(printf "%.0f" "${curlat}") != 0 -o $(printf "%.0f" "${curlon}") != 0 ]; t
    AUBRNCH="${branch}"
   fi
 
-  # If no STaRTTIME returned, delete a stored switchtime in UCI; otherwise,
-  # if stored switchtime differs from STaRTTIME, set this as new switchtime.
-  if [ "X${STRTIME}" = "X" ]; then
-   if [ "X${switchtime}" != "X" ]; then
-     /sbin/uci delete gluon-node-info.@location[0].switchtime ||:
+  # Only act on a complete, sane answer. An empty or foreign body (server
+  # error, captive portal, cut-off download) has no DST: line and would
+  # otherwise delete a scheduled switch and write the flash; a DST: this
+  # firmware has no domain for would later make gluon-switch-domain fail;
+  # a non-numeric FRM: makes the time comparison below fail every hour.
+  answer_ok=1
+  if [ "${DSTMESH}" != "${DSTMESH%%/*}" ] || [ ! -f "/lib/gluon/domains/${DSTMESH}.json" ]; then
+   answer_ok=0
+  fi
+  case "${STRTIME}" in
+   *[!0-9]*) answer_ok=0 ;;
+  esac
+
+  if [ ${answer_ok} -eq 1 ]; then
+   # If no STaRTTIME returned, delete a stored switchtime in UCI; otherwise,
+   # if stored switchtime differs from STaRTTIME, set this as new switchtime.
+   if [ "X${STRTIME}" = "X" ]; then
+    if [ "X${switchtime}" != "X" ]; then
+      /sbin/uci delete gluon-node-info.@location[0].switchtime ||:
+      /sbin/uci commit gluon-node-info
+    fi
+   else
+    if [ "${switchtime}" != "${STRTIME}" ]; then
+     /sbin/uci set gluon-node-info.@location[0].switchtime="${STRTIME}"
      /sbin/uci commit gluon-node-info
+    fi
+   fi
+
+   # If DeSTinationMESH differs from current one, save as t(ar)g(e)tloc(ode)
+   # in UCI if it differs from previously stored one (reduce uci commits as
+   # much as possible)
+   if [ "${DSTMESH}" != "${locode}" ]; then
+    tgtloc="$(/sbin/uci get gluon-node-info.@location[0].tgtloc 2>/dev/null)"
+    if [ "${DSTMESH}" != "${tgtloc}" ]; then
+     /sbin/uci set gluon-node-info.@location[0].tgtloc="${DSTMESH}"
+     /sbin/uci commit gluon-node-info
+    fi
    fi
   else
-   if [ "${switchtime}" != "${STRTIME}" ]; then
-    /sbin/uci set gluon-node-info.@location[0].switchtime="${STRTIME}"
-    /sbin/uci commit gluon-node-info
-   fi
-  fi
-
-  # If DeSTinationMESH differs from current one, save as t(ar)g(e)tloc(ode)
-  # in UCI if it differs from previously stored one (reduce uci commits as
-  # much as possible)
-  if [ "${DSTMESH}" != "${locode}" ]; then
-   tgtloc="$(/sbin/uci get gluon-node-info.@location[0].tgtloc 2>/dev/null)"
-   if [ "${DSTMESH}" != "${tgtloc}" ]; then
-    /sbin/uci set gluon-node-info.@location[0].tgtloc="${DSTMESH}"
-    /sbin/uci commit gluon-node-info
-   fi
+   AUBRNCH="${branch}"
+   logger "$0: unusable answer from setup.4830.org (DST '${DSTMESH}', FRM '${STRTIME}'), keeping current state."
   fi
  else
   logger "$0: call for get=newmesh failed on setup.4830.org ..."
