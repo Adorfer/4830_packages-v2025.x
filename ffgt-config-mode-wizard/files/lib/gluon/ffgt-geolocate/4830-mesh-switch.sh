@@ -85,6 +85,13 @@ if [ $(printf "%.0f" "${curlat}") != 0 -o $(printf "%.0f" "${curlon}") != 0 ]; t
     /sbin/uci set gluon-node-info.@location[0].tgtloc="${DSTMESH}"
     /sbin/uci commit gluon-node-info
    fi
+  else
+   # Server says stay: drop a target from an earlier answer, or the node
+   # would still move there once a switchtime is (or remains) set.
+   if [ "X$(/sbin/uci get gluon-node-info.@location[0].tgtloc 2>/dev/null)" != "X" ]; then
+    /sbin/uci delete gluon-node-info.@location[0].tgtloc ||:
+    /sbin/uci commit gluon-node-info
+   fi
   fi
  else
   logger "$0: call for get=newmesh failed on setup.4830.org ..."
